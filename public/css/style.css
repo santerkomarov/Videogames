@@ -1,0 +1,59 @@
+html {
+    scroll-behavior: smooth;
+ }
+ 
+ body {
+    padding: 0;
+    margin: 0;
+    font-family: 'Consolas', Courier, monospace;
+ }
+
+ 
+ .active {
+   color:#ddd;
+ }
+
+ 
+ .wrap-line {
+    display: flex;
+    width: 100%;
+    margin-bottom: 10px;
+ }
+ 
+ .line1 {
+    border-top-left-radius: 5px;
+    border-bottom-left-radius: 5px;
+    background-color: rgba(30, 144, 255, 0.4);
+    padding: 10px;
+    flex: 0;
+ }
+ 
+ .line2 {
+    border-top-right-radius: 5px;
+    border-bottom-right-radius: 5px;
+    background-color: rgba(30, 144, 255, 0.1);
+    padding: 10px;
+    flex: auto;
+ }
+ 
+ 
+ /* style of details(summary) */
+ details {
+    font-size: 14px;
+    margin-bottom: 24px;
+ }
+ 
+ details summary {
+    padding-top: 10px;
+    cursor: pointer;
+    transition: 0.2s;
+ }
+ 
+ .link_github {
+   transition: 0.3s;
+ }
+ .link_github:hover {
+   transform: scale(1.1);
+ }
+ 
+
