@@ -7,6 +7,14 @@ use App\Models\Videogame;
 use App\Models\Category;
 use Illuminate\Support\Facades\Validator;
 
+use App\Repositories\VideogameRepository;
+use App\Http\Requests\VideogameRequest;
+use App\Http\Requests\SearchRequest;
+
+use App\Http\Resources\ApiResource;
+use App\Actions\FormingAction;
+use App\Actions\SearchFormingAction;
+
 class ApiController extends Controller
 {
     /**
@@ -14,126 +22,50 @@ class ApiController extends Controller
      * 
      * @return Array
      */
-    public function api_games() {
+    public function api_games(VideogameRepository $videogameRepository, FormingAction $formingAction) {
 
-        $videogames = Videogame::all();
-
-        $output = [];
-        foreach ( $videogames as $game ) {
-            // формируем данные видеоигры
-            $game_data = [
-                'id' => $game->id,
-                'name' => $game->name
-            ];
-
-            // формируем данные категорий этой игры
-            $categories = [];
-            foreach (json_decode($game->categories) as $c) {
-                $categories[] = [
-                    'id' => $c->id,
-                    'name' => $c->name
-                ];
-            }
-
-            $category_data = [
-                'categories' => $categories
-            ];
-
-            $output[] = [$game_data, $category_data];
-        }
-        return $output;
+        $videogames = $videogameRepository->findAll();
+        return $formingAction->handle($videogames);
     }
 
     /**
      * Создание новой видеоигры
      * @param  Request  $request
-     * @return JSON
+     * @return JSON | ApiResource
      */
-    public function api_create(Request $request) {
-
-        $count = Videogame::all()->count();
-        // Ограничение в количестве созданнии игр
-        $limit = 20;
+    public function api_create(VideogameRequest $request, VideogameRepository $videogameRepository) {
         
+        $count = $videogameRepository->count();
+        // Частное ограничение этого проекта.
+        $limit = 20;
         if ( $count <= $limit) {
-            
-            $validator = Validator::make($request->all(), [
-                'name' => 'required|max:255',
-                'producer' => 'required|max:255',
-                'categories' => 'required'
-            ]);
-
-            if($validator->fails()){
-                return response()->json(['errors'=>$validator->messages()]);
-            }
-
-            $videogame = Videogame::create([
-                'name' => $request->name,
-                'producer' => $request->producer,
-            ]);
-    
+            $videogame = $videogameRepository->create($request);
             if ($request->categories) {
                 $videogame->categories()->attach($request->categories);
             }
-    
-            // формируем ответ
-            $output = [
-                'id' => $videogame->id,
-                'name' => $videogame->name,
-                'producer' => $videogame->producer
-            ];
-            return response()->json([
-                'status'=>'success',
-                'videogame' => $output, 
-            ], 200);
+            return new ApiResource( $videogame);
         } else {
-            return response()->json([
-                'message'=>'Limit in 20 records is over.', 
-            ], 200);
+            return response()->json(['message'=>'Limit in 20 records is over.',], 200);
         }
     }
 
     /**
      * Редактирование видеоигры
      * @param  Request  $request
-     * @return JSON
+     * @return JSON | ApiResource
      */
-    public function api_update(Request $request) {
-
-        $validator = Validator::make($request->all(), [
-            'name' => 'required|max:255',
-            'producer' => 'required|max:255',
-            'categories' => 'required'
-        ]);
-
-        if($validator->fails()){
-            return response()->json(['errors'=>$validator->messages()]);
-        }
+    public function api_update(VideogameRequest $request, VideogameRepository $videogameRepository) {
 
         // Находим игру по его ИД
-        $videogame = Videogame::find($request->id);
-
+        $videogame = $videogameRepository->find($request->id);
         if ( $videogame ) {
-            $videogame->update( 
-                [
-                    'name'=> $request->name,
-                    'producer'=> $request->producer,
-                ]
-            );
+            $videogame = $videogameRepository->update($request, $videogame);
 
-            // синхронизируем данные в pivot-таблице
+            // синхронизируем данные в pivot-таблице c категориями
             if ( $request->categories ) {
                 $videogame->categories()->sync($request->categories);
             }
-
-            // формируем ответ
-            $output = [
-                'id' => $request->id,
-                'name' => $request->name,
-                'producer' => $request->producer,
-                'category_id' => $request->categories
-            ];
-            return response()->json(['status'=>'success','videogame' => $output ], 200);
+            return new ApiResource(  $videogame );
         } else {
             return response()->json(['status'=>'failed','message'=>'Видеоигра #' . $request->id .' не найдена'], 200);
         }
@@ -144,21 +76,12 @@ class ApiController extends Controller
      * @param  Request  $request
      * @return JSON
      */
-    public function api_delete(Request $request) {
+    public function api_delete(Request $request, VideogameRepository $videogameRepository) {
 
-        $videogame = Videogame::find($request->id);
-        if ( $videogame ) {
-
-            // удаляем сначала из pivot-таблицы данные
-            $videogame->categories()->detach($request->categories);
-
-            // теперь удаляем и саму видеоигру
-            $videogame->delete();
-
-            return response()->json(['status'=>'success','message' => 'Videogame ' . $videogame->name . ' was deleted' ], 200);
-        } else {
-            return response()->json(['status'=>'failed','message'=>'Videogame #' . $request->id .' not found'], 200);
+        if ( $videogameRepository->delete($request) ) {
+            return response()->json(['status'=>'success','message' => 'Videogame was deleted' ], 200);
         }
+        return response()->json(['status'=>'failed','message'=>'Videogame #' . $request->id .' not found'], 200);
     }
 
     /**
@@ -166,40 +89,20 @@ class ApiController extends Controller
      * @param  Request  $request
      * @return JSON
      */
-    public function api_search(Request $request) {
+    public function api_search(SearchRequest $request, 
+                                VideogameRepository $videogameRepository, 
+                                SearchFormingAction $searchFormingAction
+                            ) {
 
-        $validator = Validator::make($request->all(), [
-            'categories' => 'required'
-        ]);
+        $categories = $videogameRepository->search($request);
 
-        if($validator->fails()){
-            return response()->json(['errors'=>$validator->messages()]);
-        }
-        // Сам запрос к БД
-        $categories = Category::with('videogames')->whereIn('id', $request->categories)->get()->toArray();
-
-        // Обработка результата
-        if ( $categories ) {
-            $result = [];
-            foreach ( $categories as $category ) {
-                foreach ( $category['videogames'] as $game) {
-    
-                // формируем ответ
-                $output = [
-                    'id' => $game['id'],
-                    'name' => $game['name'],
-                    'producer' => $game['producer']
-                ];
-                    $result[] = $output;
-                }
-            }
-            if ( $result ) {
-                return response()->json(['status'=>'success', 'videogames' => $result], 200);
-            } else {
-                return response()->json(['message' => 'Nothing found' ], 200);
-            }
+        if ($searchFormingAction->handle($categories)) {
+            return response()->json([
+                'status'=>'success', 
+                'videogames' => $searchFormingAction->handle($categories)
+            ], 200);
         } else {
-            return response()->json(['message' => 'Videogames are not found'], 200);
+            return response()->json(['message' => 'Nothing found' ], 200);
         }
     }
 }
